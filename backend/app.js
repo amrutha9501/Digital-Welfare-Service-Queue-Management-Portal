@@ -26,5 +26,14 @@ app.listen(PORT, () => {
 });
 
 const officerRoutes = require("./routes/officer.routes");
-
 app.use("/api/officer", officerRoutes);
+
+const serviceRoutes = require("./routes/serviceRoutes");
+app.use("/api/services", serviceRoutes);
+
+const counterRoutes = require("./routes/counterRoutes");
+
+app.use("/api/counters", counterRoutes);
+
+const tokenRoutes = require("./routes/tokenRoutes");
+app.use("/api/tokens", tokenRoutes);
