@@ -10,7 +10,7 @@ const Register = () => {
         try {
             await axios.post("http://localhost:5000/api/register", form);
             alert("Registered successfully");
-            navigate("/login"); 
+            navigate("/login"); // ✅ Clean SPA transition
         } catch (err) {
             alert(err.response?.data?.message || "Error during registration");
         }
@@ -49,10 +49,8 @@ const Register = () => {
                         <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">Aadhaar Number (UID)</label>
                         <input
                             className="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1B365D] transition"
-                            type="number" 
-                            maxLength={12} 
                             placeholder="12-digit number"
-                            onChange={(e) => { if(e.target.value.length <= 12) setForm({ ...form, aadhaar: e.target.value })}}
+                            onChange={(e) => setForm({ ...form, aadhaar: e.target.value })}
                         />
                     </div>
 

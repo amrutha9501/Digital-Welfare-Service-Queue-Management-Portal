@@ -7,10 +7,24 @@ const registerUser = async (req, res) => {
   try {
     const { name, phone, aadhaar, password } = req.body;
 
+    // 1. Validation
     if (!name || !phone || !aadhaar || !password) {
       return res.status(400).json({ message: "All fields are required" });
     }
 
+    if (phone.length !== 10) {
+      return res.status(400).json({ message: "Phone must be 10 digits" });
+    }
+
+    if (aadhaar.length !== 12) {
+      return res.status(400).json({ message: "Aadhaar must be 12 digits" });
+    }
+
+    if (password.length < 6) {
+      return res.status(400).json({ message: "Password min 6 chars" });
+    }
+
+    // 2. Check duplicates
     const [existing] = await db.execute(
       "SELECT id FROM users WHERE phone = ? OR aadhaar = ?",
       [phone, aadhaar]
@@ -20,24 +34,28 @@ const registerUser = async (req, res) => {
       return res.status(400).json({ message: "User already exists" });
     }
 
+    // 3. Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
+    // 4. Insert user
     const [result] = await db.execute(
       `INSERT INTO users (name, phone, aadhaar, password, role, status)
        VALUES (?, ?, ?, ?, 'user', 'active')`,
       [name, phone, aadhaar, hashedPassword]
     );
 
-    const newId = result.insertId;
-
+    // 5. Generate JWT
     const token = jwt.sign(
-      { userId: newId, role: "user" },
-      process.env.JWT_SECRET || "your_jwt_secret",
-      { expiresIn: "24h" }
+      {
+        userId: result.insertId,
+        role: "user"
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: "1h" }
     );
 
     res.status(201).json({
-      id: newId,
+      user_id: result.insertId,
       name,
       role: "user",
       token,
@@ -45,10 +63,10 @@ const registerUser = async (req, res) => {
     });
 
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Server error during registration" });
+    res.status(500).json({ message: "Server error" });
   }
 };
+
 
 // ================= LOGIN =================
 const loginUser = async (req, res) => {
@@ -56,9 +74,10 @@ const loginUser = async (req, res) => {
     const { phone, aadhaar, password } = req.body;
 
     if ((!phone && !aadhaar) || !password) {
-      return res.status(400).json({ message: "Credentials required" });
+      return res.status(400).json({ message: "Phone/Aadhaar & password required" });
     }
 
+    // 1. Fetch user
     const [users] = await db.execute(
       phone
         ? "SELECT * FROM users WHERE phone = ?"
@@ -72,23 +91,29 @@ const loginUser = async (req, res) => {
 
     const user = users[0];
 
+    // 2. Check status
     if (user.status !== "active") {
       return res.status(403).json({ message: "User is blocked" });
     }
 
+    // 3. Compare password
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       return res.status(400).json({ message: "Invalid credentials" });
     }
 
+    // 4. Generate JWT
     const token = jwt.sign(
-      { userId: user.id, role: user.role },
-      process.env.JWT_SECRET || "your_jwt_secret",
-      { expiresIn: "24h" }
+      {
+        userId: user.id,
+        role: user.role
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: "1h" }
     );
 
     res.status(200).json({
-      id: user.id,
+      user_id: user.id,
       name: user.name,
       role: user.role,
       token,
@@ -96,56 +121,8 @@ const loginUser = async (req, res) => {
     });
 
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Server error during login" });
+    res.status(500).json({ message: "Server error" });
   }
 };
 
-// ================= GET PROFILE =================
-/**
- * Now identifies user via the ID in the URL parameter (req.params.id)
- * to support dynamic URLs like /profile/7
- */
-const getUserProfile = async (req, res) => {
-  try {
-    // We use the ID from the URL parameter instead of the JWT to allow dynamic navigation
-    const targetUserId = req.params.id;
-
-    const [rows] = await db.execute(`
-            SELECT u.id, u.name, u.phone, u.aadhaar, u.created_at,
-                   t.token_display, t.status, t.priority, s.name as service_name,
-                   (SELECT COUNT(*) FROM tokens WHERE service_id = t.service_id AND status = 'waiting' 
-                    AND created_at < t.created_at AND DATE(created_at) = CURDATE()) as ahead,
-                   s.avg_time_per_token as avg
-            FROM users u
-            LEFT JOIN tokens t ON u.id = t.user_id AND t.status IN ('waiting', 'serving') AND DATE(t.created_at) = CURDATE()
-            LEFT JOIN services s ON t.service_id = s.id
-            WHERE u.id = ? 
-            ORDER BY t.created_at DESC LIMIT 1
-        `, [targetUserId]);
-
-    if (!rows.length) return res.status(404).json({ message: "User not found" });
-
-    const d = rows[0];
-    
-    // Logic: If currently 'serving', wait is 0. Else calculate based on people ahead.
-    let estimated_wait = "Calculating...";
-    if (d.status === 'serving') {
-        estimated_wait = "It's your turn!";
-    } else if (d.avg !== null) {
-        const wait = (d.ahead + 1) * d.avg;
-        estimated_wait = `${wait} Minutes`;
-    }
-
-    res.json({ 
-        ...d, 
-        estimated_wait,
-        people_ahead: d.ahead || 0 
-    });
-  } catch (err) {
-    console.error("Profile Fetch Error:", err);
-    res.status(500).json({ message: "Server error fetching profile" });
-  }
-};
-
-module.exports = { registerUser, loginUser, getUserProfile };
+module.exports = { registerUser, loginUser };
