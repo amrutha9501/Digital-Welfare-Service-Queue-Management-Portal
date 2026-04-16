@@ -9,11 +9,20 @@ const Login = () => {
 
     const handleLogin = async () => {
         try {
-            // ✅ Production Tip: Use the local state variables directly
             const res = await axios.post("http://localhost:5000/api/login", { phone, password });
 
+            // ✅ CRITICAL: Save both token and role
+            localStorage.setItem("userId", res.data.id);
             localStorage.setItem("token", res.data.token);
-            navigate("/dashboard"); // ✅ Instant redirect
+            localStorage.setItem("role", res.data.role); // 'admin' or 'user'
+            localStorage.setItem("userName", res.data.name);
+
+            // ✅ Redirect based on what the backend said
+            if (res.data.role === "admin") {
+                navigate("/admin/dashboard", { replace: true });
+            } else {
+                navigate("/services", { replace: true });
+            }
         } catch (err) {
             alert(err.response?.data?.message || "Login Failed");
         }
